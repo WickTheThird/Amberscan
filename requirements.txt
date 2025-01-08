@@ -1,0 +1,14 @@
+django
+Pillow
+djangorestframework
+whitenoise
+pillow
+opencv-python
+pytesseract
+google-cloud-vision
+cv
+matplotlib
+scipy
+openai
+django-cors-headers
+PyPDF2
