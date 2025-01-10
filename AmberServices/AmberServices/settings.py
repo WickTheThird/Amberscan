@@ -42,8 +42,14 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "corsheaders",
+    "django_celery_results",
     "src",
 ]
+
+CELERY_BROKER_URL = "redis://localhost:6379/0"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -75,7 +81,8 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "AmberServices.wsgi.application"
+# WSGI_APPLICATION = "AmberServices.wsgi.application"
+ASGI_APPLICATION = "AmberServices.asgi.application"
 
 STORAGES = {
     "staticfiles": {

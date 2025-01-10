@@ -13,7 +13,7 @@ function MainScreen({ authHash, onLogout }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [files, setFiles] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadFiles, setUploadFiles] = useState([]);
   const [fileType, setFileType] = useState("image");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -69,39 +69,41 @@ function MainScreen({ authHash, onLogout }) {
 
   // Handle file upload
   const handleUpload = async () => {
-    if (!uploadFile) {
-      setError("Please select a file to upload");
+    if (uploadFiles.length === 0) {
+      setError("Please select at least one file to upload");
       return;
     }
 
     setLoading(true);
     setError("");
 
-    const formData = new FormData();
-    formData.append(fileType, uploadFile);
-    formData.append("provider", authHash[0]);
-    formData.append("client", authHash[1]);
-    formData.append("name", uploadFile.name);
-
     try {
-      const response = await fetch(
-        api + `${authHash[0]}/upload_${fileType}/`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${authHash[0]}`,
-          },
-          body: formData,
-        }
-      );
+      for (const file of uploadFiles) {
+        const formData = new FormData();
+        formData.append(fileType, file);
+        formData.append("provider", authHash[0]);
+        formData.append("client", authHash[1]);
+        formData.append("name", file.name);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to upload file");
+        const response = await fetch(
+          api + `${authHash[0]}/upload_${fileType}/`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${authHash[0]}`,
+            },
+            body: formData,
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to upload file");
+        }
       }
 
-      alert("File uploaded successfully!");
-      setUploadFile(null);
+      alert("Files uploaded successfully!");
+      setUploadFiles([]);
       handleSearch();
     } catch (err) {
       setError(err.message);
@@ -159,29 +161,6 @@ function MainScreen({ authHash, onLogout }) {
       <div className="flex-grow p-8">
         <div className="mb-8">
           <h2 className="text-2xl font-semibold mb-4 flex items-center space-x-2">
-            <FaSearch />
-            <span>Search Files</span>
-          </h2>
-          <div className="flex space-x-4">
-            <input
-              type="text"
-              placeholder="Search term"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-            />
-            <button
-              onClick={handleSearch}
-              className="flex items-center space-x-2 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition duration-200"
-            >
-              <FaSearch />
-              <span>Search</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="mb-8">
-          <h2 className="text-2xl font-semibold mb-4 flex items-center space-x-2">
             <FaUpload />
             <span>Upload Files</span>
           </h2>
@@ -196,7 +175,8 @@ function MainScreen({ authHash, onLogout }) {
             </select>
             <input
               type="file"
-              onChange={(e) => setUploadFile(e.target.files[0])}
+              multiple
+              onChange={(e) => setUploadFiles(Array.from(e.target.files))}
               className="px-4 py-2 border rounded-lg"
             />
             <button
@@ -208,7 +188,7 @@ function MainScreen({ authHash, onLogout }) {
             </button>
           </div>
         </div>
-
+        {/* Display uploaded files */}
         <div>
           <h2 className="text-2xl font-semibold mb-4 flex items-center space-x-2">
             <FaFileAlt />
@@ -244,7 +224,5 @@ function MainScreen({ authHash, onLogout }) {
     </div>
   );
 }
-
-
 
 export default MainScreen;

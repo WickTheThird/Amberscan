@@ -2,6 +2,8 @@ import base64
 import hashlib
 import hmac
 import asyncio
+from asgiref.sync import sync_to_async
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -9,6 +11,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
+from django.db import transaction
 from django.contrib.auth import login, logout
 from django.contrib.sessions.models import Session
 from django.utils.timezone import now
@@ -19,6 +22,7 @@ from django.contrib.auth import authenticate, login
 from .serializers import SerializeLoginClient, SerializeSignInClient, SerializeImages, SerializePDF
 from .models import Images, PDFs, Providers, ProcessedImage
 from .tesseract import GoogleVisionOCR
+from .tasks import process_image_task
 
 
 
@@ -143,11 +147,29 @@ class Logout(APIView):
 
 class Images(APIView):
     def post(self, request):
-        serializer = SerializeImages(data=request.data)
+        is_bulk = isinstance(request.data, list)
+        serializer = SerializeImages(data=request.data, many=is_bulk)
+
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            saved_data = serializer.save()
+
+            image_objects = saved_data if is_bulk else [saved_data]
+            results = []
+
+            for image in image_objects:
+                task = process_image_task.delay(image.image.path)
+                results.append({"image_path": image.image.path, "task_id": task.id})
+
+            return Response(
+                {
+                    "message": "Images uploaded successfully. Processing has started.",
+                    "tasks": results,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
     def get(self, request):
         username = request.query_params.get('username')
@@ -159,7 +181,7 @@ class Images(APIView):
         if not verify_signature(username, signature):
             return Response({"error": "Invalid signature"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        images = Images.objects.all()
+        images = Images.objects.filter(client__username=username)
         serializer = SerializeImages(images, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -190,33 +212,6 @@ class Images(APIView):
         except Images.DoesNotExist:
             return Response({"error": "Image not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    async def process_images(self, image_objects):
-        ocr = GoogleVisionOCR()
-        tasks = [ocr.extract_text_from_image(image.image.path) for image in image_objects]
-        ocr_texts = await asyncio.gather(*tasks)
-
-        results = []
-        for image_obj, ocr_text in zip(image_objects, ocr_texts):
-            processed_result = await ocr.get_completion(ocr_text)
-            processed_image = ProcessedImage.objects.create(
-                user=image_obj.client,
-                image=image_obj,
-                company_name=processed_result.get("company_details", {}).get("name"),
-                address=processed_result.get("company_details", {}).get("address"),
-                vat_number=processed_result.get("company_details", {}).get("vat_number"),
-                transaction_date=processed_result.get("transaction_details", {}).get("date"),
-                transaction_time=processed_result.get("transaction_details", {}).get("time"),
-                payment_method=processed_result.get("transaction_details", {}).get("payment_method"),
-                items=processed_result.get("items"),
-                fuel_type=processed_result.get("fuel_type"),
-                is_invoice=processed_result.get("is_invoice"),
-                total_gross=processed_result.get("totals", {}).get("total_gross"),
-                total_vat=processed_result.get("totals", {}).get("total_vat"),
-                total_net=processed_result.get("totals", {}).get("total_net"),
-            )
-            results.append(processed_image)
-
-        return results
 
 
 class PDFs(APIView):
@@ -259,31 +254,31 @@ class PDFs(APIView):
         except PDFs.DoesNotExist:
             return Response({"error": "PDF not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    async def process_pdfs(self, pdf_objects):
-        ocr = GoogleVisionOCR()
-        tasks = [ocr.extract_text_from_pdf(pdf.pdf.path) for pdf in pdf_objects]
-        pdf_texts = await asyncio.gather(*tasks)
+    # async def process_pdfs(self, pdf_objects):
+    #     ocr = GoogleVisionOCR()
+    #     tasks = [ocr.extract_text_from_pdf(pdf.pdf.path) for pdf in pdf_objects]
+    #     pdf_texts = await asyncio.gather(*tasks)
 
-        results = []
-        for pdf_obj, pages_text in zip(pdf_objects, pdf_texts):
-            full_text = "\n".join(pages_text)
-            processed_result = await ocr.get_completion(full_text)
-            processed_image = ProcessedImage.objects.create(
-                user=pdf_obj.client,
-                pdf=pdf_obj,
-                company_name=processed_result.get("company_details", {}).get("name"),
-                address=processed_result.get("company_details", {}).get("address"),
-                vat_number=processed_result.get("company_details", {}).get("vat_number"),
-                transaction_date=processed_result.get("transaction_details", {}).get("date"),
-                transaction_time=processed_result.get("transaction_details", {}).get("time"),
-                payment_method=processed_result.get("transaction_details", {}).get("payment_method"),
-                items=processed_result.get("items"),
-                fuel_type=processed_result.get("fuel_type"),
-                is_invoice=processed_result.get("is_invoice"),
-                total_gross=processed_result.get("totals", {}).get("total_gross"),
-                total_vat=processed_result.get("totals", {}).get("total_vat"),
-                total_net=processed_result.get("totals", {}).get("total_net"),
-            )
-            results.append(processed_image)
+    #     results = []
+    #     for pdf_obj, pages_text in zip(pdf_objects, pdf_texts):
+    #         full_text = "\n".join(pages_text)
+    #         processed_result = await ocr.get_completion(full_text)
+    #         processed_image = ProcessedImage.objects.create(
+    #             user=pdf_obj.client,
+    #             pdf=pdf_obj,
+    #             company_name=processed_result.get("company_details", {}).get("name"),
+    #             address=processed_result.get("company_details", {}).get("address"),
+    #             vat_number=processed_result.get("company_details", {}).get("vat_number"),
+    #             transaction_date=processed_result.get("transaction_details", {}).get("date"),
+    #             transaction_time=processed_result.get("transaction_details", {}).get("time"),
+    #             payment_method=processed_result.get("transaction_details", {}).get("payment_method"),
+    #             items=processed_result.get("items"),
+    #             fuel_type=processed_result.get("fuel_type"),
+    #             is_invoice=processed_result.get("is_invoice"),
+    #             total_gross=processed_result.get("totals", {}).get("total_gross"),
+    #             total_vat=processed_result.get("totals", {}).get("total_vat"),
+    #             total_net=processed_result.get("totals", {}).get("total_net"),
+    #         )
+    #         results.append(processed_image)
 
-        return results
+    #     return results

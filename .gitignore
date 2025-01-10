@@ -13,6 +13,9 @@ ENV/
 media/
 *.pot
 
+# Django database
+db.sqlite3
+
 # IDE specific
 .vscode/
 .idea/
@@ -87,7 +90,7 @@ build
 # Next.js
 .next
 
-# Yarn intstallation logs
+# Yarn installation logs
 .yarn-debug.log
 .yarn-error.log
 
@@ -175,3 +178,4 @@ settings.d.ts
 
 # TypeScript type definitions
 definitions/
+db.sqlite3

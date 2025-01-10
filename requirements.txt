@@ -12,3 +12,11 @@ scipy
 openai
 django-cors-headers
 PyPDF2
+uvicorn
+gunicorn
+fastapi
+aiofiles
+aiohttp
+celery[redis]
+django-celery-beat
+django-celery-results
