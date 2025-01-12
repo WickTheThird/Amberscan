@@ -3,12 +3,14 @@ from .models import Images, ProcessedImage
 from .tesseract import GoogleVisionOCR
 from django.db import transaction
 import logging
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
 @shared_task
 def process_image_task(image_path):
     try:
+        logger.info(f"MEDIA_ROOT: {settings.MEDIA_ROOT}")
         image = Images.objects.get(image=image_path)
         ocr = GoogleVisionOCR()
 
@@ -18,12 +20,12 @@ def process_image_task(image_path):
 
         processed_result = ocr.get_completion(ocr_text)
         if not processed_result:
-            raise ValueError(f"Failed to process OCR data for image at path {image_path}")
+            raise ValueError(f"Failed to process OCR data for image at path {image_path} {processed_result}")
 
         with transaction.atomic():
             ProcessedImage.objects.create(
                 user=image.client,
-                image=image,
+                image=image.id,
                 company_name=processed_result.get("company_details", {}).get("name"),
                 address=processed_result.get("company_details", {}).get("address"),
                 vat_number=processed_result.get("company_details", {}).get("vat_number"),

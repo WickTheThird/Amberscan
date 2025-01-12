@@ -157,8 +157,8 @@ class Images(APIView):
             results = []
 
             for image in image_objects:
-                task = process_image_task.delay(image.image.path)
-                results.append({"image_path": image.image.path, "task_id": task.id})
+                task = process_image_task.delay(".." + image.image.url)
+                results.append({"image_path": image.image.url, "task_id": task.id})
 
             return Response(
                 {

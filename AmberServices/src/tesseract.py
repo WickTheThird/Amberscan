@@ -4,9 +4,6 @@ from google.cloud import vision
 from google.oauth2 import service_account
 from .models import SecretKey
 import os
-import aiofiles
-from asgiref.sync import sync_to_async
-from django.db import transaction
 
 logging.basicConfig(level=logging.INFO)
 
@@ -96,7 +93,7 @@ class GoogleVisionOCR:
         {ocr_text}
         """
         try:
-            from openai import OpenAI  # Lazy import to avoid blocking Celery workers
+            from openai import OpenAI
             client = OpenAI()
             response = client.chat.completions.create(
                 model=model,
