@@ -21,14 +21,14 @@ set_openai_key.delay()
 
 
 class GoogleVisionOCR:
-    def __init__(self, credentials_path='./media/key/serious-cabinet-441714-j0-dbdb45c99a95.json'):
+    def __init__(self, credentials_path='./media/key/serious-cabinet-441714-j0-dbdb45c99a95.json', image_path="./media/images/"):
         self.credentials = service_account.Credentials.from_service_account_file(credentials_path)
         self.client = vision.ImageAnnotatorClient(credentials=self.credentials)
+        self.image_path = image_path
 
-    @shared_task
-    def extract_text_from_image(self, image_path):
+    def extract_text_from_image(self):
         try:
-            with open(image_path, "rb") as image_file:
+            with open(self.image_path, "rb") as image_file:
                 content = image_file.read()
 
             image = vision.Image(content=content)
@@ -50,10 +50,9 @@ class GoogleVisionOCR:
 
             return ascii_text
         except Exception as e:
-            logging.error(f"Failed to process image {image_path}: {e}")
+            logging.error(f"Failed to process image {self.image_path}: {e}")
             return None
 
-    @shared_task
     def get_completion(self, ocr_text, model="gpt-4"):
         prompt = f"""
         You are Amberscan, an advanced AI for analyzing receipts and invoices under Irish tax laws. Your task is to:
@@ -110,20 +109,20 @@ class GoogleVisionOCR:
             return None
 
     @shared_task
-    def process_image(self, image_path):
+    def process_image(self):
         try:
-            ocr_text = GoogleVisionOCR.extract_text_from_image(image_path)
+            ocr_text = self.extract_text_from_image()
             if ocr_text:
-                return GoogleVisionOCR.get_completion(ocr_text)
+                return self.get_completion(ocr_text)
             return None
         except Exception as e:
-            logging.error(f"Failed to process image {image_path}: {e}")
+            logging.error(f"Failed to process image {self.image_path}: {e}")
             return None
 
     @shared_task
-    def process_images_concurrently(self, image_paths):
+    def process_images_concurrently(self):
         results = []
-        for path in image_paths:
-            result = GoogleVisionOCR.process_image.delay(path)
+        for path in self.image_paths:
+            result = self.process_image.delay(path)
             results.append(result)
         return results

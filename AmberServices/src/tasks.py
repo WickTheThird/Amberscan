@@ -1,20 +1,36 @@
+import os
 from celery import shared_task
+from django.conf import settings
+from django.db import transaction
+from django.core.exceptions import ObjectDoesNotExist
 from .models import Images, ProcessedImage
 from .tesseract import GoogleVisionOCR
-from django.db import transaction
 import logging
-from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
 
 @shared_task
 def process_image_task(image_path):
     try:
         logger.info(f"MEDIA_ROOT: {settings.MEDIA_ROOT}")
-        image = Images.objects.get(image=image_path)
-        ocr = GoogleVisionOCR()
 
-        ocr_text = ocr.extract_text_from_image(image.image.path)
+
+        if image_path.startswith('./media'):
+            image_path = image_path[len('./media/'):]
+
+        if image_path.startswith(settings.MEDIA_ROOT):
+            relative_path = os.path.relpath(image_path, settings.MEDIA_ROOT)
+        else:
+            relative_path = image_path
+
+        full_image_path = os.path.normpath(os.path.join(settings.MEDIA_ROOT, relative_path))
+
+        if not os.path.exists(full_image_path):
+            raise FileNotFoundError(f"No such file or directory: '{full_image_path}'")
+
+        ocr = GoogleVisionOCR(image_path=full_image_path)
+        ocr_text = ocr.extract_text_from_image()
         if not ocr_text:
             raise ValueError(f"No text extracted for image at path {image_path}")
 
@@ -22,6 +38,7 @@ def process_image_task(image_path):
         if not processed_result:
             raise ValueError(f"Failed to process OCR data for image at path {image_path} {processed_result}")
 
+        image = Images.objects.get(image=relative_path)
         with transaction.atomic():
             ProcessedImage.objects.create(
                 user=image.client,
@@ -43,9 +60,13 @@ def process_image_task(image_path):
         logger.info(f"Successfully processed image at path {image_path}")
         return {"image_path": image_path, "status": "success"}
 
+    except FileNotFoundError as e:
+        logger.error(str(e))
+        return {"image_path": image_path, "status": "error", "error": str(e)}
+
     except Images.DoesNotExist:
-        logger.error(f"Image not found at path: {image_path}")
-        return {"image_path": image_path, "status": "error", "error": "Image not found"}
+        logger.error(f"Image not found in the database: {image_path}")
+        return {"image_path": image_path, "status": "error", "error": "Image not found in database"}
 
     except Exception as e:
         logger.error(f"Error processing image at path {image_path}: {e}", exc_info=True)
